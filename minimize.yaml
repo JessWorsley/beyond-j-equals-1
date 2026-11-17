@@ -1,0 +1,40 @@
+likelihood:
+  likelihoods.DESILikelihood:     {python_path: .}
+  likelihoods.PantheonLikelihood: {python_path: .}
+  likelihoods.PlanckLikelihood:   {python_path: .}      # add `fx_max: 0.05` here to cut on f_X(z*)
+
+params:
+  H0:
+    prior: {min: 60, max: 75}
+    ref: {dist: norm, loc: 67.5, scale: 0.5}
+    proposal: 0.3
+    latex: H_0
+  Om0:
+    prior: {min: 0.2, max: 0.4}
+    ref: {dist: norm, loc: 0.31, scale: 0.005}
+    proposal: 0.005
+    latex: \Omega_{m0}
+  q0:                                   # sampled directly; LCDM limit is q0 = 1.5 Om0 - 1 at j0 = 1
+    prior: {min: -1.2, max: -0.2}
+    ref: {dist: norm, loc: -0.535, scale: 0.005}
+    proposal: 0.005
+    latex: q_0
+  j0:
+    prior: {min: 0.0, max: 1.5}
+    ref: {dist: norm, loc: 1.0, scale: 0.005}
+    proposal: 0.005
+    latex: j_0
+  ombh2:
+    prior: {min: 0.02, max: 0.025}
+    ref: {dist: norm, loc: 0.02237, scale: 0.0001}
+    proposal: 0.0001
+    latex: \omega_bh^2
+  rd:      {latex: r_d}                 # derived (no prior)
+  fX_star: {latex: f_X(z_*)}            # derived (no prior)
+
+sampler:
+  minimize:
+    method: scipy               # no extra install; the default 'bobyqa' needs the pybobyqa package
+    # covmat: chains/desi_pantheon_planck_model_3.covmat   # optional: reuse the MCMC proposal covariance
+
+output: chains/minimize_model_1

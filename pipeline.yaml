@@ -1,0 +1,49 @@
+# pipeline.yaml -- the single description of which runs exist.  Used by pipeline.py (make / run / analyse / compare) and by
+# compare_variants.py (labels, prefixes, Z_MATCH of each variant).  Edit this file, not the scripts.
+#
+# Every variant is made with make_runs.py using:  --sn <sn> --models <models> --tag <tag> <args> --z-match <z_match or none>
+# so constants.py never needs editing (Z_MATCH is written into the yaml).
+
+sn: [pantheon, desy5]                 # datasets: pantheon, desy5 (never combined)
+models: [model_1, model_2, model_3]              # closure models: model_1, model_2, model_3
+benchmarks: [cpl, lcdm]        # run once per SN dataset with the default settings; remove the line to skip
+best_of: 8                     # random starting points of every minimiser run
+
+variants:
+  - name: base                 # name: used by `pipeline.py --only`
+    label: base (with Planck)  # label: used in compare_variants.py tables and plots
+    checks: true               # also run positivity_check.py / bound_check.py on this (unconstrained) chain
+  - name: posdark
+    label: positive dark
+    tag: _posdark              # chain prefix suffix (make_runs adds _noplanck / _rdfix itself)
+    args: [--positive-dark]
+  - name: noplanck
+    label: no Planck
+    args: [--no-planck]
+    checks: true
+  - name: zm3
+    label: z match at 3
+    tag: _zm3
+    z_match: 3.0               # closure only for z <= z_match, then matter + frozen dark density
+    z_match_negative: true     # allow a negative frozen density (sign-switching)
+  - name: zm3pos
+    label: z match at 3 (positive)
+    tag: _zm3pos
+    z_match: 3.0
+    z_match_negative: false
+# --- Z_MATCH robustness (positive frozen density, like zm3pos).  DESI Lya reaches z = 2.33, so 2.5 is the lowest sensible value.
+  - name: zm25pos
+    label: z match at 2.5 (positive)
+    tag: _zm25pos
+    z_match: 2.5
+    z_match_negative: false
+  - name: zm4pos
+    label: z match at 4 (positive)
+    tag: _zm4pos
+    z_match: 4.0
+    z_match_negative: false
+  - name: zm5pos
+    label: z match at 5 (positive)
+    tag: _zm5pos
+    z_match: 5.0
+    z_match_negative: false
