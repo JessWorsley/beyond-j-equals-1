@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # beyond-j-equals-1
 =======
 # Closure-model cosmology pipeline (Cobaya)
