@@ -4,12 +4,6 @@ Constrains the cosmographic closure models j = j(q) (Chakraborty, Louw et al.) w
 (Pantheon+ or DES-SN5YR with the Dovekie recalibration) and compressed Planck distance priors (Chen, Huang & Wang 2018,
 wCDM column).  A flat CPL (w0wa) model and the LCDM limit are run as benchmarks.
 
-> Keep this file in step with the code: whenever a script is added, renamed or changes behaviour, update the tables and the
-> change log at the bottom.
-
-Status: the code is tested on mock/synthetic data (`test_*.py`).  Real chains have been run for model_3 (Pantheon+); the
-other models/datasets and the new options (`--rd-fixed`, `Z_MATCH`) are not yet checked on real data.
-
 ## Models and conventions
 
 | name | definition | sampled parameters |
@@ -155,4 +149,3 @@ Run the minimiser for every variant; the lowest chain sample is only an upper bo
 - 2026-11-16: added `pipeline.yaml` / `pipeline.py` / `variants_config.py` (manifest-driven make -> run -> analyse -> compare, with status tracking); `make_runs.py --z-match`; `compare_variants.py` takes its variants from the manifest when present.
 - 2026-11-16: manifest variants `zm25pos`, `zm4pos`, `zm5pos` (Z_MATCH robustness, positive frozen density); `discontinuity_check.py` added.
 - 2026-11-17: `high_z_check.py` added (models 1 and 2 only approach matter domination at j0 = 1).  Z_MATCH profile points `zm35pos`, `zm7pos` added to the manifest.
->>>>>>> 3431093 (Add python and yaml files)
