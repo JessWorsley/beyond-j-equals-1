@@ -1,5 +1,3 @@
-# beyond-j-equals-1
-=======
 # Closure-model cosmology pipeline (Cobaya)
 
 Constrains the cosmographic closure models j = j(q) (Chakraborty, Louw et al.) with DESI DR2 BAO, one SN sample at a time
