@@ -1,17 +1,8 @@
-<<<<<<< HEAD
-# beyond-j-equals-1
-=======
 # Closure-model cosmology pipeline (Cobaya)
 
 Constrains the cosmographic closure models j = j(q) (Chakraborty, Louw et al.) with DESI DR2 BAO, one SN sample at a time
 (Pantheon+ or DES-SN5YR with the Dovekie recalibration) and compressed Planck distance priors (Chen, Huang & Wang 2018,
 wCDM column).  A flat CPL (w0wa) model and the LCDM limit are run as benchmarks.
-
-> Keep this file in step with the code: whenever a script is added, renamed or changes behaviour, update the tables and the
-> change log at the bottom.
-
-Status: the code is tested on mock/synthetic data (`test_*.py`).  Real chains have been run for model_3 (Pantheon+); the
-other models/datasets and the new options (`--rd-fixed`, `Z_MATCH`) are not yet checked on real data.
 
 ## Models and conventions
 
@@ -141,12 +132,11 @@ Run the minimiser for every variant; the lowest chain sample is only an upper bo
 
 ## Known limitations / open items
 - Planck prior numbers in `load_data.planck_distance_priors` were typed by hand: verify against Chen et al. (2018).
-- Union3 is not in the pipeline.  The fixed-r_d cross-check, `--no-planck` and `Z_MATCH` runs are untested on real data.
+- Union3 is not in the pipeline.
 - A hard cut (`positive_dark`) makes the likelihood a wall; Cobaya's minimiser may stall there.
 - `analyse_chains.py` and `plot_chains.py` handle `--no-planck` chains (no omega_b, no Planck panel); `_zm` chains need
   `Z_MATCH` set when analysing.
-- Cobaya's `best_of` and `method` minimiser options are used as written in `make_runs.py`; check the names against your
-  Cobaya version if a minimiser yaml is rejected.
+- Cobaya's `best_of` and `method` minimiser options are used as written in `make_runs.py`.
 
 ## Change log
 - 2026-11-13: README created.  Added `compare_variants.py`, `positivity_check.py`, `bound_check.py`, `start_from_chain.py`;
@@ -158,4 +148,3 @@ Run the minimiser for every variant; the lowest chain sample is only an upper bo
 - 2026-11-16: added `pipeline.yaml` / `pipeline.py` / `variants_config.py` (manifest-driven make -> run -> analyse -> compare, with status tracking); `make_runs.py --z-match`; `compare_variants.py` takes its variants from the manifest when present.
 - 2026-11-16: manifest variants `zm25pos`, `zm4pos`, `zm5pos` (Z_MATCH robustness, positive frozen density); `discontinuity_check.py` added.
 - 2026-11-17: `high_z_check.py` added (models 1 and 2 only approach matter domination at j0 = 1).  Z_MATCH profile points `zm35pos`, `zm7pos` added to the manifest.
->>>>>>> 3431093 (Add python and yaml files)
