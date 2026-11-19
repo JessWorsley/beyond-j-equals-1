@@ -8,6 +8,7 @@ sn: [pantheon, desy5]                 # datasets: pantheon, desy5 (never combine
 models: [model_1, model_2, model_3]              # closure models: model_1, model_2, model_3
 benchmarks: [cpl, lcdm]        # run once per SN dataset with the default settings; remove the line to skip
 best_of: 8                     # random starting points of every minimiser run
+model_comparison_tags: ["", "_zm3pos"]   # model_comparison.py is run once per tag: closure models vs LCDM-limit and CPL ("" = base chains)
 
 variants:
   - name: base                 # name: used by `pipeline.py --only`
@@ -46,4 +47,15 @@ variants:
     label: z match at 5 (positive)
     tag: _zm5pos
     z_match: 5.0
+    z_match_negative: false
+# --- extra points for the Delta chi^2(Z_MATCH) profile (interpolates between zm3pos and posdark)
+  - name: zm35pos
+    label: z match at 3.5 (positive)
+    tag: _zm35pos
+    z_match: 3.5
+    z_match_negative: false
+  - name: zm7pos
+    label: z match at 7 (positive)
+    tag: _zm7pos
+    z_match: 7.0
     z_match_negative: false

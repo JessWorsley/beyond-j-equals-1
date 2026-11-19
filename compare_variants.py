@@ -51,55 +51,15 @@ except Exception as _e:                                          # noqa: manifes
 
 
 def short(col):
-    """Shorten a chi2 column name to its dataset name.
-
-    Parameters
-    ----------
-    col : str
-        Column such as ``'chi2__likelihoods.DESIFreeRdLikelihood'``.
-
-    Returns
-    -------
-    name : str
-        E.g. ``'DESI'``, ``'Pantheon'``, ``'DESY5'`` or ``'Planck'``.
-    """
     b = col.split(".")[-1].replace("Likelihood", "").replace("CPL", "")
     return "DESI" if b.startswith("DESI") else b
 
 
 def wq(x, w, qs=(0.16, 0.5, 0.84)):
-    """Compute weighted quantiles (inverted-CDF method).
-
-    Parameters
-    ----------
-    x : array_like
-        Samples.
-    w : array_like
-        Sample weights.
-    qs : sequence of float, optional
-        Quantiles.  Default is (0.16, 0.5, 0.84).
-
-    Returns
-    -------
-    q : numpy.ndarray
-        The quantiles.
-    """
     return np.quantile(x, qs, method="inverted_cdf", weights=w)
 
 
 def load(prefix):
-    """Read and concatenate a run's chains after burn-in.
-
-    Parameters
-    ----------
-    prefix : str
-        Chain prefix.
-
-    Returns
-    -------
-    df : pandas.DataFrame or None
-        All chains, or None if there are no chain files.
-    """
     try:
         df = pd.concat(read_chains(prefix, BURN), ignore_index=True)
     except FileNotFoundError:
@@ -108,41 +68,12 @@ def load(prefix):
 
 
 def set_zmatch(z_match):
-    """Set closure_cosmo's Z_MATCH before H(z) is recomputed from a chain.
-
-    A negative frozen density is always allowed here, because chains only
-    contain points the run already accepted.
-
-    Parameters
-    ----------
-    z_match : float or None
-        Z_MATCH the chain was run with.
-    """
+    """Chains only contain accepted points, so a negative frozen density is always allowed when re-evaluating them."""
     cs.Z_MATCH = z_match
     cs.Z_MATCH_ALLOW_NEGATIVE = True
 
 
 def one(name, prefix, z_match=None):
-    """Summarise one variant: best-fit chi^2, posteriors and dark-density positivity.
-
-    The best-fit chi^2 comes from the minimizer if it exists and is not worse
-    than the best chain sample; otherwise the best chain sample is used.
-
-    Parameters
-    ----------
-    name : str
-        Variant label.
-    prefix : str
-        Chain prefix.
-    z_match : float or None, optional
-        Z_MATCH the chain was run with.
-
-    Returns
-    -------
-    result : tuple or None
-        ``(row, df, model, z_match)``: the table row (dict), the chains, the
-        model and `z_match`; None if there are no chains.
-    """
     set_zmatch(z_match)
     df = load(prefix)
     if df is None:
@@ -192,30 +123,6 @@ def one(name, prefix, z_match=None):
 
 
 def draws(df, model, n, rng, z_match=None):
-    """Compute rho_DE(z) and Omega_m(z) for random posterior draws.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Chain samples with a ``weight`` column.
-    model : str
-        Closure model.
-    n : int
-        Number of draws (drawn with probability proportional to the weight).
-    rng : numpy.random.Generator
-        Random number generator.
-    z_match : float or None, optional
-        Z_MATCH the chain was run with.
-
-    Returns
-    -------
-    z : numpy.ndarray
-        Redshifts from 0 to 6.
-    rho : numpy.ndarray
-        rho_DE(z) / rho_DE(0), one row per valid draw.
-    om : numpy.ndarray
-        Omega_m(z), one row per valid draw.
-    """
     set_zmatch(z_match)
     w = df["weight"].values
     sub = df.iloc[rng.choice(len(df), size=n, p=w / w.sum())]
@@ -232,27 +139,19 @@ def draws(df, model, n, rng, z_match=None):
 
 
 def plot(results):
-    """Plot rho_DE(z) and Omega_m(z) bands (68% and 95%) for every variant.
-
-    Saves ``OUT_DIR/variants_<MODEL>_<SN>.pdf``.
-
-    Parameters
-    ----------
-    results : list of tuple
-        ``(name, df, model, z_match)`` per variant.
-    """
     import matplotlib
     import matplotlib.pyplot as plt
     rng = np.random.default_rng(2)
-    colours = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9"]
+    colours = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9",
+               "#000000", "#999999", "#882255", "#44AA99", "#AA4499", "#117733"]   # more variants than colours: cycle
     fig, axes = plt.subplots(1, 2, figsize=(11, 4), sharex=True)
     for i, (name, df, model, zm) in enumerate(results):
         z, rho, om = draws(df, model, N_DRAW, rng, zm)
         for ax, y in zip(axes, (rho, om)):
             lo95, lo68, med, hi68, hi95 = np.percentile(y, [2.5, 16, 50, 84, 97.5], axis=0)
-            ax.fill_between(z, lo95, hi95, color=colours[i], alpha=0.12, lw=0)
-            ax.fill_between(z, lo68, hi68, color=colours[i], alpha=0.3, lw=0)
-            ax.plot(z, med, color=colours[i], lw=1.8, label=name)
+            ax.fill_between(z, lo95, hi95, color=colours[i % len(colours)], alpha=0.12, lw=0)
+            ax.fill_between(z, lo68, hi68, color=colours[i % len(colours)], alpha=0.3, lw=0)
+            ax.plot(z, med, color=colours[i % len(colours)], lw=1.8, label=name)
     axes[0].axhline(0, color="k", lw=0.8); axes[0].axhline(1, color="k", ls="--", lw=0.8)
     axes[1].axhline(1, color="k", ls="--", lw=0.8)
     axes[0].axvline(Z_DATA_MAX, color="grey", ls=":", lw=1)
@@ -271,7 +170,6 @@ def plot(results):
 
 
 def main():
-    """Print the variant comparison tables, save them as CSV and make the plot."""
     rows, results = [], []
     for name, prefix, zm in VARIANTS:
         out = one(name, prefix, zm)
@@ -302,15 +200,15 @@ def main():
                       f"minimiser did not converge (typical for a hard cut like positive_dark).  Do not use it: "
                       f"re-run with more starts (--best-of), or start it from the best chain sample.")
 
+    N = None
+    try:
+        from model_comparison import n_data
+        N = n_data(SN)
+    except Exception:                                                  # noqa
+        pass
     same = [i for i in tab.index if not np.isnan(tab.loc[i, "chi2_Planck"])]
     if len(same) > 1:
         print("\nSAME-DATA COMPARISON (variants that include Planck; Delta = variant - base)")
-        N = None
-        try:
-            from model_comparison import n_data
-            N = n_data(SN)
-        except Exception:                                              # noqa
-            pass
         for i in same:
             if i == base_i:
                 continue
@@ -335,6 +233,16 @@ def main():
     if cols:
         print(f"\nNEGATIVE DARK DENSITY (data range = z <= {Z_DATA_MAX}; bound margin = j0 - bound, model 3 only)")
         print(tab[cols].round(3).to_string())
+
+    # AIC / BIC columns (only variants with the same data are comparable: the no-Planck row has 3 fewer data numbers and
+    # is listed with its own N for completeness; its d..._vs_base is left empty).  z_m fixed by hand is not counted in k.
+    if N:
+        Nrow = pd.Series({i: (N if i in same else N - 3) for i in tab.index})
+        tab["N"] = Nrow
+        tab["AIC"] = tab["chi2"] + 2 * tab["k"]
+        tab["BIC"] = tab["chi2"] + tab["k"] * np.log(tab["N"])
+        for c in ("AIC", "BIC"):
+            tab["d" + c + "_vs_base"] = [tab.loc[i, c] - tab.loc[base_i, c] if i in same else np.nan for i in tab.index]
 
     os.makedirs("chains", exist_ok=True)
     csv = f"chains/variants_{MODEL}_{SN}.csv"

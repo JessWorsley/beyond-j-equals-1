@@ -39,14 +39,6 @@ _lock = threading.Lock()
 
 # ----------------------------------------------------------------------------------------------------------- status
 def load_status():
-    """Read the record of finished runs.
-
-    Returns
-    -------
-    status : dict
-        Contents of ``STATUS``, or an empty dict if the file is missing or
-        unreadable.
-    """
     try:
         with open(STATUS) as f:
             return json.load(f)
@@ -55,13 +47,6 @@ def load_status():
 
 
 def set_done(key):
-    """Mark a run as finished in the status file (thread-safe).
-
-    Parameters
-    ----------
-    key : str
-        Chain prefix, with ``_min`` for a minimizer run.
-    """
     with _lock:
         st = load_status()
         st[key] = {"done": True, "time": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -71,101 +56,28 @@ def set_done(key):
 
 
 def chain_files(prefix):
-    """List the MCMC chain files of a run.
-
-    Parameters
-    ----------
-    prefix : str
-        Chain prefix.
-
-    Returns
-    -------
-    paths : list of str
-        Files ``chains/<prefix>.<N>.txt``.
-    """
     return glob.glob(f"chains/{prefix}.[0-9]*.txt")
 
 
 def mcmc_state(prefix, st):
-    """Return the state of a run's MCMC.
-
-    Parameters
-    ----------
-    prefix : str
-        Chain prefix.
-    st : dict
-        Status record (see ``load_status``).
-
-    Returns
-    -------
-    state : {'done', 'found', 'missing'}
-        ``'done'`` if marked finished, ``'found'`` if chain files exist but are
-        not marked, otherwise ``'missing'``.
-    """
     if st.get(prefix, {}).get("done"):
         return "done"
     return "found" if chain_files(prefix) else "missing"
 
 
 def min_state(prefix, st):
-    """Return the state of a run's minimizer.
-
-    Parameters
-    ----------
-    prefix : str
-        Chain prefix (without ``_min``).
-    st : dict
-        Status record (see ``load_status``).
-
-    Returns
-    -------
-    state : {'done', 'missing'}
-        ``'done'`` if ``chains/<prefix>_min.minimum.txt`` exists or the run is
-        marked finished.
-    """
     if os.path.exists(f"chains/{prefix}_min.minimum.txt") or st.get(prefix + "_min", {}).get("done"):
         return "done"
     return "missing"
 
 
 def yaml_state(prefix):
-    """Report whether a run's yaml file exists.
-
-    Parameters
-    ----------
-    prefix : str
-        Chain prefix.
-
-    Returns
-    -------
-    state : {'yes', 'no'}
-        Whether ``runs/<prefix>.yaml`` exists.
-    """
     return "yes" if os.path.exists(os.path.join(RUNS_DIR, f"{prefix}.yaml")) else "no"
 
 
 # ---------------------------------------------------------------------------------------------------------- helpers
 def sh(cmd, dry, log=None, env=None, echo=True):
-    """Run a command.
-
-    Parameters
-    ----------
-    cmd : list of str
-        Command and arguments.
-    dry : bool
-        Only print the command.
-    log : str, optional
-        File for stdout and stderr.  None (default) prints to the console.
-    env : dict, optional
-        Extra environment variables.
-    echo : bool, optional
-        Print the command before running it.  Default is True.
-
-    Returns
-    -------
-    code : int
-        Exit code (0 in dry-run mode).
-    """
+    """Run a command; returns the exit code (0 in dry-run mode).  Output goes to `log` if given, else to the console."""
     line = " ".join(cmd)
     if dry:
         print("  [dry-run]", line)
@@ -184,15 +96,6 @@ def sh(cmd, dry, log=None, env=None, echo=True):
 
 # ------------------------------------------------------------------------------------------------------------ stages
 def cmd_status(cfg, only):
-    """Print a table of which yaml files, chains and minima exist for each run.
-
-    Parameters
-    ----------
-    cfg : dict
-        Manifest (see ``variants_config.load``).
-    only : list of str or None
-        Variant names to show; None shows all.
-    """
     st = load_status()
     rs = vc.runs(cfg, only)
     w = max([len(r["prefix"]) for r in rs] + [10])
@@ -203,22 +106,6 @@ def cmd_status(cfg, only):
 
 
 def cmd_make(cfg, only, dry):
-    """Write the yaml files of every variant (and the benchmarks) with make_runs.py.
-
-    Parameters
-    ----------
-    cfg : dict
-        Manifest (see ``variants_config.load``).
-    only : list of str or None
-        Variant names to make; None makes all.
-    dry : bool
-        Only print the commands.
-
-    Returns
-    -------
-    ok : bool
-        True if every make_runs.py call succeeded.
-    """
     ok = True
     for v in cfg["variants"]:
         if only and v["name"] not in only:
@@ -232,20 +119,6 @@ def cmd_make(cfg, only, dry):
 
 
 def _cobaya(task, dry):
-    """Run one cobaya-run job and record it as finished if it succeeds.
-
-    Parameters
-    ----------
-    task : tuple
-        ``(kind, prefix, yaml_file)`` with kind ``'mcmc'`` or ``'min'``.
-    dry : bool
-        Only print the command.
-
-    Returns
-    -------
-    code : int
-        Exit code of cobaya-run.
-    """
     kind, prefix, yaml_file = task
     key = prefix + ("_min" if kind == "min" else "")
     t0 = time.time()
@@ -258,29 +131,6 @@ def _cobaya(task, dry):
 
 
 def cmd_run(cfg, only, dry, force, jobs):
-    """Run every MCMC and minimizer that is not done yet.
-
-    Runs whose chains exist but are not marked finished are skipped unless
-    `force` is set.
-
-    Parameters
-    ----------
-    cfg : dict
-        Manifest (see ``variants_config.load``).
-    only : list of str or None
-        Variant names to run; None runs all.
-    dry : bool
-        Only print the commands.
-    force : bool
-        Re-run runs that are already done.
-    jobs : int
-        Number of cobaya-run processes at the same time.
-
-    Returns
-    -------
-    ok : bool
-        True if every run succeeded (or there was nothing to do).
-    """
     st = load_status()
     tasks = []
     for r in vc.runs(cfg, only):
@@ -305,17 +155,6 @@ def cmd_run(cfg, only, dry, force, jobs):
 
 
 def cmd_adopt(cfg, only):
-    """Mark chains that already exist as finished.
-
-    Only do this for chains that really are finished.
-
-    Parameters
-    ----------
-    cfg : dict
-        Manifest (see ``variants_config.load``).
-    only : list of str or None
-        Variant names to adopt; None adopts all.
-    """
     st = load_status()
     n = 0
     for r in vc.runs(cfg, only):
@@ -327,25 +166,6 @@ def cmd_adopt(cfg, only):
 
 
 def cmd_analyse(cfg, only, dry):
-    """Run analyse_chains.py and plot_chains.py on every run with chains.
-
-    Runs with ``checks: true`` also get positivity_check.py, and bound_check.py
-    for model_3.
-
-    Parameters
-    ----------
-    cfg : dict
-        Manifest (see ``variants_config.load``).
-    only : list of str or None
-        Variant names to analyse; None analyses all.
-    dry : bool
-        Only print the commands.
-
-    Returns
-    -------
-    ok : bool
-        Always True.
-    """
     st = load_status()
     env = {"MPLBACKEND": "Agg"}
     for r in vc.runs(cfg, only):
@@ -364,29 +184,14 @@ def cmd_analyse(cfg, only, dry):
 
 
 def cmd_compare(cfg, only, dry):
-    """Run compare_variants.py, model_comparison.py and compare_w.py.
-
-    Parameters
-    ----------
-    cfg : dict
-        Manifest (see ``variants_config.load``).
-    only : list of str or None
-        Unused; the comparisons always cover every run.
-    dry : bool
-        Only print the commands.
-
-    Returns
-    -------
-    ok : bool
-        Always True.
-    """
     env = {"MPLBACKEND": "Agg"}
     for sn in cfg["sn"]:
         for model in cfg["models"]:
             print(f"[compare] variants: {sn} {model}")
             sh([PY, "compare_variants.py", sn, model], dry, env=env)
-    print("[compare] model_comparison.py (edit its RUNS list for new tags)")
-    sh([PY, "model_comparison.py"], dry, env=env)
+    for tag in cfg.get("model_comparison_tags", [""]):
+        print(f"[compare] model_comparison.py {('--tag ' + tag) if tag else '(untagged = base chains)'}")
+        sh([PY, "model_comparison.py"] + (["--tag", tag] if tag else []), dry, env=env)
     for sn in cfg["sn"]:
         print(f"[compare] compare_w.py {sn} (edit its RUNS list for new tags)")
         sh([PY, "compare_w.py", sn], dry, env=env)
@@ -394,7 +199,6 @@ def cmd_compare(cfg, only, dry):
 
 
 def main():
-    """Parse the command line and run the requested stage (see the module docstring)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["status", "make", "run", "analyse", "compare", "all", "adopt"])
     ap.add_argument("--manifest", default=vc.MANIFEST)

@@ -44,7 +44,7 @@ OUT_DIR = 'chains/plots'
 BURN = 0.3                                    # fraction of each chain discarded as burn-in
 SAMPLED = ["H0", "Om0", "ombh2", "q0", "j0"]  # edit for fixed-parameter runs
 DERIVED = ["rd", "fX_star", "wm"]       # 'wm' = Om0 h^2 is added below; others come from the chain
-Z_LOW_MAX = 4.0                               # upper redshift of the low-z function plots
+Z_LOW_MAX = 8.0                               # upper redshift of the low-z function plots
 Z_DATA_MAX = 2.33                             # highest redshift with SN/BAO data (DESI Lya); beyond it nothing constrains H(z)
 N_POST = 400                                  # posterior draws for the redshift-dependent bands
 LCDM_REF = dict(H0=67.4, Om0=0.315, j0=1.0, ombh2=0.02237)   # LCDM-limit point
