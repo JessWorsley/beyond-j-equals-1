@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 
 import closure_cosmo as cs
 from constants import MODEL, WONG_PALETTE, RD_PLANCK
-from chain_utils import (read_chains, expand, mean_acf, autocorr_function,
+from chain_utils import (is_fixed_noplanck, read_chains, expand, mean_acf, autocorr_function,
                          integrated_autocorr_time, split_rhat, sn_dataset)
 from load_data import load_desi, load_sn, planck_distance_priors
 from chain_utils import run_prefix, infer_model, apply_run_settings
@@ -44,7 +44,7 @@ OUT_DIR = 'chains/plots'
 BURN = 0.3                                    # fraction of each chain discarded as burn-in
 SAMPLED = ["H0", "Om0", "ombh2", "q0", "j0"]  # edit for fixed-parameter runs
 DERIVED = ["rd", "fX_star", "wm"]       # 'wm' = Om0 h^2 is added below; others come from the chain
-Z_LOW_MAX = 8.0                               # upper redshift of the low-z function plots
+Z_LOW_MAX = 4.0                               # upper redshift of the low-z function plots
 Z_DATA_MAX = 2.33                             # highest redshift with SN/BAO data (DESI Lya); beyond it nothing constrains H(z)
 N_POST = 400                                  # posterior draws for the redshift-dependent bands
 LCDM_REF = dict(H0=67.4, Om0=0.315, j0=1.0, ombh2=0.02237)   # LCDM-limit point
@@ -64,23 +64,11 @@ else:
 
 
 def lab(p):
-    """Return the plot label of a parameter (its name if none is defined)."""
     return LABELS.get(p, p)
 
 
 def save(fig, name, tag=None):
-    """Save a figure as ``OUT_DIR/<name>_<tag>.pdf`` and close it.
-
-    Parameters
-    ----------
-    fig : matplotlib.figure.Figure
-        Figure.
-    name : str
-        Base name.
-    tag : str, optional
-        Suffix.  Defaults to the chain prefix, so datasets and models never
-        overwrite each other.
-    """
+    """Save to OUT_DIR/<name>_<tag>.pdf; tag defaults to the chain prefix so datasets/models never overwrite each other."""
     os.makedirs(OUT_DIR, exist_ok=True)
     path = os.path.join(OUT_DIR, f"{name}_{tag or FILE_NAME}.pdf")
     fig.savefig(path, bbox_inches="tight")
@@ -89,30 +77,17 @@ def save(fig, name, tag=None):
 
 
 def add_derived(df):
-    """Return a copy of a chain with the column ``wm`` = Om0 h^2 added."""
     df = df.copy()
     df["wm"] = df["Om0"] * (df["H0"] / 100.0) ** 2
     return df
 
 
 def available(df, names):
-    """Return the names that are columns of `df`, in order and without duplicates."""
     return [n for n in dict.fromkeys(names) if n in df.columns]
 
 
 def lcdm_value(p):
-    """Return the value of a parameter at the LCDM-limit point.
-
-    Parameters
-    ----------
-    p : str
-        Parameter name.
-
-    Returns
-    -------
-    value : float or None
-        Value at ``LCDM_REF`` (r_d = ``RD_PLANCK``), or None if undefined.
-    """
+    """Value of parameter p at the LCDM-limit point (None if undefined)."""
     r = LCDM_REF
     return {"H0": r["H0"], "Om0": r["Om0"], "j0": 1.0, "ombh2": r["ombh2"],
             "q0": 1.5 * r["Om0"] - 1.0, "w0": -1.0, "wa": 0.0, "fX_star": 0.0, "wm": r["Om0"] * (r["H0"] / 100) ** 2,
@@ -120,13 +95,6 @@ def lcdm_value(p):
 
 
 def read_priors():
-    """Read the prior ranges from the run's yaml file.
-
-    Returns
-    -------
-    priors : dict
-        Parameter name to ``(min, max)``; empty if the yaml cannot be read.
-    """
     try:
         import yaml
         path = YAML_FILE or os.path.join(YAML_DIR, f"{FILE_NAME}.yaml")
@@ -140,22 +108,6 @@ def read_priors():
 
 
 def wquantiles(x, w, qs):
-    """Compute weighted quantiles (inverted-CDF method).
-
-    Parameters
-    ----------
-    x : array_like
-        Samples.
-    w : array_like
-        Sample weights.
-    qs : array_like
-        Quantiles.
-
-    Returns
-    -------
-    q : numpy.ndarray
-        The quantiles.
-    """
     return np.quantile(x, qs, method="inverted_cdf", weights=w)
 
 
@@ -163,13 +115,6 @@ def wquantiles(x, w, qs):
 # a) Trace plots
 # =========================================================
 def plot_traces(raw):
-    """Plot the trace of each sampled parameter and of -ln P, with the burn-in marked.
-
-    Parameters
-    ----------
-    raw : list of pandas.DataFrame
-        Chains including burn-in.
-    """
     cols = available(raw[0], SAMPLED + ["minuslogpost"])
     fig, axes = plt.subplots(len(cols), 1, figsize=(10, 1.8 * len(cols)), sharex=True)
     for ax, c in zip(np.atleast_1d(axes), cols):
@@ -190,28 +135,10 @@ def plot_traces(raw):
 # b) Autocorrelation, IAT, ESS, R-hat
 # =========================================================
 def _sequences(chains, p):
-    """Return the unweighted step sequence of parameter `p` for each chain."""
     return [expand(ch, p) for ch in chains]
 
 
 def convergence_table(chains, params):
-    """Compute IAT, ESS and split R-hat per parameter; print and save them.
-
-    The table is saved as ``OUT_DIR/convergence_table_<prefix>.csv``.
-
-    Parameters
-    ----------
-    chains : list of pandas.DataFrame
-        Chains after burn-in.
-    params : list of str
-        Parameters.
-
-    Returns
-    -------
-    tab : pandas.DataFrame
-        Columns N_steps, IAT, ESS, N_over_50tau and split_Rhat, indexed by
-        parameter.
-    """
     rows = []
     for p in params:
         seqs = _sequences(chains, p)
@@ -229,17 +156,6 @@ def convergence_table(chains, params):
 
 
 def plot_acf(chains, params, tab):
-    """Plot the chain-averaged autocorrelation functions and the IAT per parameter.
-
-    Parameters
-    ----------
-    chains : list of pandas.DataFrame
-        Chains after burn-in.
-    params : list of str
-        Parameters.
-    tab : pandas.DataFrame
-        Output of ``convergence_table``.
-    """
     fig, axes = plt.subplots(1, 2, figsize=(11, 4))
     lag_max = int(min(min(len(s) for s in _sequences(chains, params[0])) - 1,
                       max(20, 8 * tab["IAT"].max())))
@@ -258,15 +174,6 @@ def plot_acf(chains, params, tab):
 
 
 def plot_iat_convergence(chains, params):
-    """Plot the IAT estimate against chain length, with the N/50 reliability line.
-
-    Parameters
-    ----------
-    chains : list of pandas.DataFrame
-        Chains after burn-in.
-    params : list of str
-        Parameters.
-    """
     n_min = min(len(s) for s in _sequences(chains, params[0]))
     Ns = np.unique(np.geomspace(max(200, n_min // 100), n_min, 12).astype(int))
     fig, axes = plt.subplots(1, len(params), figsize=(3.2 * len(params), 3.2), sharex=True)
@@ -287,15 +194,6 @@ def plot_iat_convergence(chains, params):
 # Marginals, degeneracies, chi2
 # =========================================================
 def plot_marginals(df):
-    """Plot 1-D posteriors with prior ranges and LCDM-limit values marked.
-
-    Also warns when more than 2% of the weight lies within 3% of a prior edge.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Chains after burn-in, concatenated.
-    """
     priors = read_priors()
     w = df["weight"].values
     params = available(df, SAMPLED + DERIVED)
@@ -320,6 +218,14 @@ def plot_marginals(df):
             near = w[(df[p] < a + 0.03 * span) | (df[p] > b - 0.03 * span)].sum() / w.sum()
             if near > 0.02:
                 print(f"  WARNING {p}: {100 * near:.1f}% of the posterior sits at a prior edge -> widen the prior")
+            mean = np.average(df[p].values, weights=w)
+            sd = np.sqrt(np.average((df[p].values - mean) ** 2, weights=w))
+            if sd > 0.8 * span / np.sqrt(12.0):                  # a flat prior has sd = span / sqrt(12)
+                print(f"  WARNING {p}: posterior sd {sd:.3g} is {100 * sd / (span / np.sqrt(12.0)):.0f}% of the flat-prior sd -> "
+                      f"the data do not constrain {p} (posterior = prior)")
+        pmin, pmax = float(df[p].min()), float(df[p].max())
+        pad = 0.1 * (pmax - pmin if pmax > pmin else 1.0)
+        ax.set_xlim(pmin - pad, pmax + pad)                       # wide priors must not squash the posterior
         ax.set_title(f"{lab(p)} = {med:.4g}$^{{+{hi - med:.2g}}}_{{-{med - lo:.2g}}}$", fontsize=10)
         ax.set_yticks([])
     for ax in axes[len(params):]:
@@ -330,13 +236,6 @@ def plot_marginals(df):
 
 
 def plot_degeneracies(df):
-    """Plot weighted 2-D histograms of up to six key parameter pairs.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Chains after burn-in, concatenated.
-    """
     pairs = [("fX_star", "H0"), ("wm", "H0"), ("rd", "H0"), ("q0", "j0"), ("j0", "H0"), ("q0", "H0"),
              ("w0", "wa"), ("w0", "H0"), ("wa", "H0")]
     pairs = [(a, b) for a, b in pairs if a in df.columns and b in df.columns and df[a].std() > 0 and df[b].std() > 0]
@@ -363,13 +262,6 @@ def plot_degeneracies(df):
 
 
 def plot_chi2(chains):
-    """Plot the trace and histogram of the total and per-likelihood chi^2.
-
-    Parameters
-    ----------
-    chains : list of pandas.DataFrame
-        Chains after burn-in.
-    """
     cols = [c for c in chains[0].columns if c.startswith("chi2__")] + ["chi2"]
     fig, axes = plt.subplots(1, 2, figsize=(11, 3.8))
     df = pd.concat(chains, ignore_index=True)
@@ -389,54 +281,19 @@ def plot_chi2(chains):
 # c) Functions of redshift with uncertainty bands
 # =========================================================
 def _d1_d2(L, h):
-    """Compute 5-point first and second derivatives.
-
-    Parameters
-    ----------
-    L : numpy.ndarray
-        Function values at x + h * (-2, -1, 0, 1, 2), along the first axis.
-    h : float
-        Step.
-
-    Returns
-    -------
-    d1, d2 : numpy.ndarray
-        First and second derivatives at x.
-    """
+    """5-point first and second derivatives of L sampled at x + h*(-2..2)."""
     d1 = (L[0] - 8 * L[1] + 8 * L[3] - L[4]) / (12 * h)
     d2 = (-L[0] + 16 * L[1] - 30 * L[2] + 16 * L[3] - L[4]) / (12 * h * h)
     return d1, d2
 
 
 def curves(theta, model, z, h=1e-3):
-    """Compute functions of redshift from the closure H(z) (no radiation).
-
-    Parameters
-    ----------
-    theta : sequence of float
-        ``[H0, p1, p2, Om0]`` (see ``closure_cosmo.background_model``).
-    model : str
-        One of ``closure_cosmo.ALL_MODELS``.
-    z : numpy.ndarray
-        Redshifts.
-    h : float, optional
-        Step in x = ln(1+z) of the numerical derivatives.  Default is 1e-3.
-
-    Returns
-    -------
-    out : dict or None
-        ``Hz`` (H(z)), ``H`` (H(z)/(1+z)), ``q``, ``j``, ``Om`` (Omega_m(z)),
-        ``w`` (w_DE(z), NaN where rho_DE <= 0) and ``rho``
-        (rho_DE(z)/rho_DE(0)); None if the background is invalid.
-
-    Notes
-    -----
-    q = 1/2 dlnE^2/dx - 1 and j = q + 2 q^2 + 1/2 d^2lnE^2/dx^2.  The effective
-    dark energy is rho_DE = E^2 - Om0 (1+z)^3 with w = -1 + 1/3 dln(rho_DE)/dx.
-
-    Since d[H/(1+z)]/dz = H q / (1+z)^2, H/(1+z) = da/dt has its minimum
-    exactly where q = 0 (the deceleration-acceleration transition, z_t = 0.63
-    in LCDM).  H(z) itself is monotonic unless rho_DE falls fast.
+    """
+    H(z), H(z)/(1+z), q(z), j(z), Omega_m(z), w_DE(z), rho_DE(z)/rho_DE(0) from the closure H(z) (no radiation).
+      NB  d[H/(1+z)]/dz = H q/(1+z)^2, so H/(1+z) = da/dt has its MINIMUM exactly where q = 0 (the
+      deceleration -> acceleration transition, z_t = 0.63 in LCDM).  H(z) itself is monotonic unless rho_DE falls fast.
+      q = 1/2 dlnE^2/dx - 1,  j = q + 2q^2 + 1/2 d^2lnE^2/dx^2,  x = ln(1+z)
+      effective DE: rho_DE = E^2 - Om0 (1+z)^3,  w = -1 + 1/3 dln(rho_DE)/dx   (nan where rho_DE <= 0)
     """
     H0, q0, j0, Om0 = theta
     x = np.log1p(np.asarray(z, dtype=float))
@@ -459,38 +316,20 @@ def curves(theta, model, z, h=1e-3):
 
 
 def _theta_from_row(r):
-    """Return ``[H0, p1, p2, Om0]`` for a chain row.
-
-    (p1, p2) = (q0, j0) for the closure models and (w0, wa) for CPL.
-    """
+    """[H0, p1, p2, Om0]: (q0, j0) for the closure models, (w0, wa) for CPL."""
     if MODEL == "cpl":
         return [r["H0"], r["w0"], r["wa"], r["Om0"]]
     return [r["H0"], r["q0"], r["j0"], r["Om0"]]
 
 
 def _theta_lcdm():
-    """Return the LCDM-limit point in the parametrisation of the current model."""
+    """The LCDM point in the parametrisation of the current model."""
     if MODEL == "cpl":
         return [LCDM_REF["H0"], -1.0, 0.0, LCDM_REF["Om0"]]
     return [LCDM_REF["H0"], 1.5 * LCDM_REF["Om0"] - 1.0, 1.0, LCDM_REF["Om0"]]
 
 
 def _bands(samples, ax, z, color, label=None):
-    """Draw the 68% and 95% bands and the median of a set of curves.
-
-    Parameters
-    ----------
-    samples : list of numpy.ndarray
-        Curves, one per draw (NaNs ignored).
-    ax : matplotlib.axes.Axes
-        Target axes.
-    z : numpy.ndarray
-        Redshifts.
-    color : str
-        Colour.
-    label : str, optional
-        Legend label of the median.
-    """
     arr = np.array(samples)
     lo95, lo68, med, hi68, hi95 = np.nanpercentile(arr, [2.5, 16, 50, 84, 97.5], axis=0)
     ax.fill_between(z, lo95, hi95, color=color, alpha=0.18, lw=0)
@@ -499,18 +338,6 @@ def _bands(samples, ax, z, color, label=None):
 
 
 def plot_functions(df, rng=np.random.default_rng(0)):
-    """Plot posterior bands of functions of redshift, at low z and out to recombination.
-
-    Low z: H, H/(1+z), q, j, Omega_m, w_DE, rho_DE and the transition redshift
-    z_t.  High z: Omega_m, f_X and H/H_LCDM - 1.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Chains after burn-in, concatenated.
-    rng : numpy.random.Generator, optional
-        Random number generator for the ``N_POST`` posterior draws.
-    """
     w = df["weight"].values
     idx = rng.choice(len(df), size=N_POST, p=w / w.sum())
     rows = [df.iloc[i] for i in idx]
@@ -552,7 +379,6 @@ def plot_functions(df, rng=np.random.default_rng(0)):
         ax.set_xlabel("$z$")
     # transition redshift z_t where q crosses zero
     def first_zero(q):
-        """Return the first redshift where q crosses zero (linear interpolation), or NaN."""
         s = np.where(np.sign(q[:-1]) != np.sign(q[1:]))[0]
         if not len(s):
             return np.nan
@@ -611,15 +437,6 @@ def plot_functions(df, rng=np.random.default_rng(0)):
 # Data vs best sample
 # =========================================================
 def plot_residuals(df):
-    """Plot DESI pulls, binned SN residuals and Planck pulls at the best chain sample.
-
-    The Planck panel is left out for a no-Planck chain.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Chains after burn-in, concatenated.
-    """
     best = df.loc[df["chi2"].idxmin()]
     theta = _theta_from_row(best)
     noplanck = "ombh2" not in best.index                    # --no-planck chain: r_d is a sampled parameter
@@ -680,7 +497,6 @@ def plot_residuals(df):
 # getdist corner (optional)
 # =========================================================
 def plot_corner():
-    """Make a getdist triangle plot of the sampled parameters (skipped without getdist)."""
     try:
         from getdist import loadMCSamples, plots
     except ModuleNotFoundError:
@@ -702,13 +518,6 @@ def plot_corner():
 # Main
 # =========================================================
 def main(parts):
-    """Read the chains, detect the model and sampled parameters, and make the plots.
-
-    Parameters
-    ----------
-    parts : sequence of str
-        Parts to make (see ``PARTS``).
-    """
     apply_run_settings(FILE_NAME)                 # Z_MATCH of this run, from runs/<prefix>.yaml
     global MODEL, SAMPLED, LEGACY_CPL
     raw = read_chains(FILE_NAME, burn=0.0)
@@ -732,6 +541,9 @@ def main(parts):
     if "ombh2" not in cols and "rd" in cols:                 # make_runs.py --no-planck: r_d sampled, no CMB likelihood
         print("NOTE: no-Planck chain (r_d sampled, no omega_b)")
         SAMPLED = ["rd" if p == "ombh2" else p for p in SAMPLED]
+        if is_fixed_noplanck(raw[0]):                        # H0, Om0 fixed: only r_d, q0, j0 are sampled
+            SAMPLED = [p for p in SAMPLED if p not in ("H0", "Om0")]
+            print("NOTE: H0 and Om0 are fixed in this run")
     chains = [c.iloc[int(BURN * len(c)):].reset_index(drop=True) for c in raw]
     chains = [add_derived(c) for c in chains]
     raw = [add_derived(c) for c in raw]

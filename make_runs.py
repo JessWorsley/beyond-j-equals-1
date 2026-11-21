@@ -21,38 +21,22 @@ import argparse
 import os
 import yaml
 
-from chain_utils import run_prefix
+from chain_utils import run_prefix, NOPLANCK_FIXED
 
 CLOSURE = ("model_1", "model_2", "model_3")
 
 
 def closure_params():
-    """Return the Cobaya ``params`` block of the closure-model runs.
-
-    Returns
-    -------
-    params : dict
-        Priors, reference distributions, proposal widths and LaTeX labels for
-        H0, Om0, q0, j0 and ombh2.
-    """
     return {
-        "H0":    {"prior": {"min": 60, "max": 75}, "ref": {"dist": "norm", "loc": 67.5, "scale": 0.5}, "proposal": 0.3, "latex": "H_0"},
-        "Om0":   {"prior": {"min": 0.2, "max": 0.4}, "ref": {"dist": "norm", "loc": 0.31, "scale": 0.005}, "proposal": 0.005, "latex": "\\Omega_{m0}"},
-        "q0":    {"prior": {"min": -1.2, "max": -0.2}, "ref": {"dist": "norm", "loc": -0.535, "scale": 0.005}, "proposal": 0.005, "latex": "q_0"},
-        "j0":    {"prior": {"min": 0.0, "max": 1.5}, "ref": {"dist": "norm", "loc": 1.0, "scale": 0.005}, "proposal": 0.005, "latex": "j_0"},
+        "H0":    {"prior": {"min": 0, "max": 100}, "ref": {"dist": "norm", "loc": 67.5, "scale": 0.5}, "proposal": 0.3, "latex": "H_0"},
+        "Om0":   {"prior": {"min": 0.0, "max": 1.0}, "ref": {"dist": "norm", "loc": 0.31, "scale": 0.005}, "proposal": 0.005, "latex": "\\Omega_{m0}"},
+        "q0":    {"prior": {"min": -3.0, "max": 1.5}, "ref": {"dist": "norm", "loc": -0.535, "scale": 0.005}, "proposal": 0.005, "latex": "q_0"},
+        "j0":    {"prior": {"min": -3.0, "max": 3.0}, "ref": {"dist": "norm", "loc": 1.0, "scale": 0.005}, "proposal": 0.005, "latex": "j_0"},
         "ombh2": {"prior": {"min": 0.02, "max": 0.025}, "ref": {"dist": "norm", "loc": 0.02237, "scale": 0.0001}, "proposal": 0.0001, "latex": "\\omega_bh^2"},
     }
 
 
 def lcdm_params():
-    """Return the Cobaya ``params`` block of the LCDM-limit runs.
-
-    Returns
-    -------
-    params : dict
-        H0, Om0 and ombh2 as in ``closure_params``, j0 fixed to 1 and
-        q0 = 1.5 Om0 - 1 derived.
-    """
     p = closure_params()
     return {"H0": p["H0"], "Om0": p["Om0"], "ombh2": p["ombh2"],
             "j0": 1.0,                                                         # fixed
@@ -60,17 +44,9 @@ def lcdm_params():
 
 
 def cpl_params():
-    """Return the Cobaya ``params`` block of the flat w0waCDM (CPL) runs.
-
-    Returns
-    -------
-    params : dict
-        Priors, reference distributions, proposal widths and LaTeX labels for
-        H0, Om0, w0, wa and ombh2.
-    """
     return {
-        "H0":    {"prior": {"min": 50, "max": 90}, "ref": {"dist": "norm", "loc": 67.5, "scale": 0.5}, "proposal": 0.5, "latex": "H_0"},
-        "Om0":   {"prior": {"min": 0.1, "max": 0.6}, "ref": {"dist": "norm", "loc": 0.31, "scale": 0.01}, "proposal": 0.01, "latex": "\\Omega_{m0}"},
+        "H0":    {"prior": {"min": 0, "max": 100}, "ref": {"dist": "norm", "loc": 67.5, "scale": 0.5}, "proposal": 0.5, "latex": "H_0"},
+        "Om0":   {"prior": {"min": 0.0, "max": 1.0}, "ref": {"dist": "norm", "loc": 0.31, "scale": 0.01}, "proposal": 0.01, "latex": "\\Omega_{m0}"},
         "w0":    {"prior": {"min": -3, "max": 1}, "ref": {"dist": "norm", "loc": -0.9, "scale": 0.05}, "proposal": 0.05, "latex": "w_0"},
         "wa":    {"prior": {"min": -3, "max": 2}, "ref": {"dist": "norm", "loc": -0.2, "scale": 0.1}, "proposal": 0.1, "latex": "w_a"},
         "ombh2": {"prior": {"min": 0.02, "max": 0.025}, "ref": {"dist": "norm", "loc": 0.02237, "scale": 0.0001}, "proposal": 0.0001, "latex": "\\omega_bh^2"},
@@ -81,17 +57,9 @@ _ZM = None          # set from --z-match / --z-match-negative; None = take the v
 
 
 def zmatch_options():
-    """Return the late-time-closure options written into every likelihood block.
-
-    They are always written, also as None, so the yaml alone defines the run
-    and a later edit of constants.py cannot change an existing yaml.
-
-    Returns
-    -------
-    opts : dict
-        ``z_match`` and ``z_match_allow_negative``: from ``--z-match`` if it was
-        given, otherwise from constants.py at generation time.
-    """
+    """Late-time-closure settings, written into every likelihood block so the yaml alone defines the run (always written,
+    also as None, so a later edit of constants.py cannot change an existing yaml).  From --z-match if given, otherwise
+    from constants.py at generation time."""
     if _ZM is not None:
         return dict(_ZM)
     import constants
@@ -100,25 +68,7 @@ def zmatch_options():
 
 
 def effective_tag(tag, rd_fixed=None, no_planck=False):
-    """Return the tag actually used in the chain prefix.
-
-    make_runs.py appends ``_rdfix`` and ``_noplanck`` itself unless the tag
-    already contains them.
-
-    Parameters
-    ----------
-    tag : str
-        Tag given with ``--tag``.
-    rd_fixed : float or None, optional
-        Value of ``--rd-fixed``.
-    no_planck : bool, optional
-        Whether ``--no-planck`` is set.
-
-    Returns
-    -------
-    tag : str
-        The tag with the automatic suffixes.
-    """
+    """The tag actually used in the chain prefix (make_runs appends _rdfix / _noplanck itself)."""
     if rd_fixed is not None and "rdfix" not in tag:
         tag += "_rdfix"
     if no_planck and "noplanck" not in tag:
@@ -127,38 +77,6 @@ def effective_tag(tag, rd_fixed=None, no_planck=False):
 
 
 def build(sn, model, tag, planck_opts, minimize, rd_fixed=None, best_of=None, no_planck=False):
-    """Build the Cobaya input of one run.
-
-    Parameters
-    ----------
-    sn : {'pantheon', 'desy5'}
-        SN dataset.
-    model : str
-        ``'model_1'``, ``'model_2'``, ``'model_3'``, ``'cpl'`` or ``'lcdm'``.
-    tag : str
-        Suffix of the chain prefix (see ``chain_utils.run_prefix``).
-    planck_opts : dict
-        Extra PlanckLikelihood options (``positive_dark``, ``fx_sigma``,
-        ``fx_max``).
-    minimize : bool
-        Write a minimizer run (output ``chains/<prefix>_min``) instead of an
-        MCMC run.
-    rd_fixed : float or None, optional
-        Fix r_d in the BAO likelihood (Mpc), use a 2-D (R, lA) CMB prior and
-        fix ombh2.  Default is None.
-    best_of : int or None, optional
-        Number of minimizer starting points (Cobaya ``best_of``).
-    no_planck : bool, optional
-        DESI + SN only, with r_d sampled and no CMB likelihood.  Default is
-        False.
-
-    Returns
-    -------
-    prefix : str
-        Chain prefix.
-    info : dict
-        Cobaya input (likelihood, params, prior, sampler, output).
-    """
     cpl = model == "cpl"
     sfx = "CPL" if cpl else ""
     if no_planck:                                  # DESI + SN only, r_d a free parameter, no CMB at all
@@ -168,7 +86,11 @@ def build(sn, model, tag, planck_opts, minimize, rd_fixed=None, best_of=None, no
             opt["model"] = "model_1" if model == "lcdm" else model
         params = {"cpl": cpl_params, "lcdm": lcdm_params}.get(model, closure_params)()
         params.pop("ombh2")
-        params["rd"] = {"prior": {"min": 120.0, "max": 170.0}, "ref": {"dist": "norm", "loc": 147.0, "scale": 1.0},
+        # H0 and Om0 do not enter the no-Planck likelihood (SN: M marginalised; BAO: only H0*r_d; Om0 not in E(z)), so they are
+        # fixed and r_d is sampled: this removes the H0-r_d degeneracy and a prior-only parameter.  chain_utils puts them back.
+        params["H0"] = NOPLANCK_FIXED["H0"]
+        params["Om0"] = NOPLANCK_FIXED["Om0"]
+        params["rd"] = {"prior": {"min": 0.0, "max": 200.0}, "ref": {"dist": "norm", "loc": 147.0, "scale": 1.0},
                         "proposal": 1.0, "latex": "r_d"}
         out = {"likelihood": {f"likelihoods.DESIFreeRdLikelihood{sfx}": dict(opt), f"likelihoods.{sn_cls}": dict(opt)},
                "params": params}
@@ -212,7 +134,6 @@ def build(sn, model, tag, planck_opts, minimize, rd_fixed=None, best_of=None, no
 
 
 def main():
-    """Parse the command line and write the yaml files (see the module docstring)."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sn", nargs="+", default=["pantheon", "desy5"], choices=["pantheon", "desy5"])
     ap.add_argument("--models", nargs="+", default=list(CLOSURE) + ["cpl", "lcdm"], choices=list(CLOSURE) + ["cpl", "lcdm"])

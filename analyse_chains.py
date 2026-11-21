@@ -5,7 +5,7 @@ import pandas as pd
 from constants import MODEL
 from inferred import calculate_inferred_parameters
 from load_data import load_desi, load_sn
-from chain_utils import read_chains, chi2_columns, sn_dataset, run_prefix, infer_model
+from chain_utils import is_fixed_noplanck, read_chains, chi2_columns, sn_dataset, run_prefix, infer_model
 
 # usage: python analyse_chains.py <chain_prefix>   e.g.  desi_desy5_planck_model_2,  cpl_run,  lcdm_limit_baseline
 # The model (model_1/2/3 or cpl) and the SN dataset are read from the prefix and the chain, not from constants.MODEL.
@@ -32,6 +32,10 @@ if noplanck:
     print("NOTE: no-Planck chain (r_d sampled, no omega_b, no CMB likelihood)")
     sampled = ["rd" if p == "ombh2" else p for p in sampled]
     reported = ["rd" if p == "ombh2" else p for p in reported]
+    if is_fixed_noplanck(df):                 # H0, Om0 fixed: only r_d, q0, j0 are sampled
+        sampled = [p for p in sampled if p not in ("H0", "Om0")]
+        reported = [p for p in reported if p not in ("H0", "Om0")]
+        print("NOTE: H0 and Om0 are fixed in this run (only H0*r_d matters without Planck)")
 extra = [e for e in ["rd", "fX_star"] if e not in reported]    # derived outputs (if present in the chain)
 
 legacy_cpl = False
@@ -48,18 +52,6 @@ results = {}                                  # name -> (lo, med, hi): 16th, 50t
 
 
 def summary(name, values):
-    """Print the weighted 16th/50th/84th percentiles of a quantity and store them.
-
-    Uses the global weights ``w``; the result goes into the global
-    ``results[name]``.
-
-    Parameters
-    ----------
-    name : str
-        Name of the quantity.
-    values : array_like
-        One value per chain row.
-    """
     lo, med, hi = np.quantile(values, [0.16, 0.50, 0.84], method='inverted_cdf', weights=w)
     results[name] = (lo, med, hi)
     print(f"{name}: {med:.5f} +{hi - med:.5f} -{med - lo:.5f}")

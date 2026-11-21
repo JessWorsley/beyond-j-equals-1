@@ -32,7 +32,7 @@ RUNS = [   # name, chain prefix (same convention as make_runs.py), kind, closure
     dict(name="Model 1", prefix=run_prefix(SN, "model_1"), kind="closure", model="model_1"),
     dict(name="Model 2", prefix=run_prefix(SN, "model_2"), kind="closure", model="model_2"),
     dict(name="Model 3", prefix=run_prefix(SN, "model_3"), kind="closure", model="model_3"),
-    dict(name="CPL (this pipeline)", prefix=run_prefix(SN, "cpl"), kind="cpl"),
+    dict(name="CPL", prefix=run_prefix(SN, "cpl"), kind="cpl"),
 ]
 # Public DESI chains (getdist format; root = path without extension).  Parameter names must be set to the
 # names used in that chain's .paramnames file (often 'w' and 'wa').  Leave empty to skip.

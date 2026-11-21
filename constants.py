@@ -35,7 +35,7 @@ RD_PLANCK = 147.09          # Mpc, Planck 2018 r_drag at the fiducial point (che
 # =========================================================
 Z_MIN_PANTHEON = 0.01       # drop the low-z / Cepheid-calibrator SNe (zHD <= 0.01)
 
-# Z_MATCH = 3.0
+Z_MATCH = None
 # Z_MATCH_ALLOW_NEGATIVE = False
 
 # =========================================================

@@ -21,6 +21,7 @@ import re
 import numpy as np
 import pandas as pd
 
+NOT_CONSTRAINED_NO_PLANCK = ("H0", "Om0", "ombh2", "rd")      # no-Planck fits: these return their priors
 SN_NAME = {"pantheon": r"Pantheon+", "desy5": r"DES-SN5YR"}
 MODEL_NAME = {"model_1": "Model 1", "model_2": "Model 2", "model_3": "Model 3"}
 PM = re.compile(r"^\s*([+-]?\d+\.?\d*)\s*\(\s*\+([\d.]+)\s+-([\d.]+)\s*\)\s*$")
@@ -60,9 +61,9 @@ def pm(cell, nd=None):
     v, up, lo = (float(m.group(i)) for i in (1, 2, 3))
     errs = [e for e in (up, lo) if e > 0]
     d = max(0, 1 - int(math.floor(math.log10(min(errs))))) if errs else 3          # two significant digits of the smaller error
-    while nd is None and d > 0 and all(abs(round(e, d - 1) - e) < 0.03 * e for e in errs):
+    while nd is None and d > 0 and all(abs(round(e, d - 1) - e) < 0.02 * e for e in errs):
         d -= 1                                                                    # drop a trailing 0 (0.0060 -> 0.006)
-    d = min(d, 4) if nd is None else nd
+    d = min(d, 6) if nd is None else nd
     return f"${v:.{d}f}^{{+{up:.{d}f}}}_{{-{lo:.{d}f}}}$"
 
 
@@ -128,30 +129,38 @@ def tables_for_sn(sn, models, variants):
                      r"comparable in total $\chi^2$. $^\dagger$: lowest chain sample (upper bound on $\chi^2_{\min}$).",
                      f"tab:variants_{sn}", blocks=blocks))
 
-    # 2 -- parameters
-    cols = [("H0", r"$H_0$"), ("Om0", r"$\Omega_{m0}$"), ("q0", r"$q_0$"), ("j0", r"$j_0$"), ("rd", r"$r_d$\,[Mpc]")]
+    # 2 -- fitted parameters
+    cols = [("H0", r"$H_0$"), ("Om0", r"$\Omega_{m0}$"), ("ombh2", r"$\omega_b$"), ("rd", r"$r_d$\,[Mpc]"), ("q0", r"$q_0$"), ("j0", r"$j_0$")]
     rows, blocks = [], {}
     for m, d in data.items():
         blocks[len(rows)] = MODEL_NAME.get(m, m)
         for i, r in d.iterrows():
-            rows.append([label(i)] + [pm(r[c]) if c in d.columns else "--" for c, _ in cols])
+            noplanck = not np.isfinite(r["chi2_Planck"])
+            rows.append([label(i)] + [("--" if noplanck and c in NOT_CONSTRAINED_NO_PLANCK else pm(r[c])) if c in d.columns else "--" for c, _ in cols])
     out.append(table(["Variant"] + [t for _, t in cols], rows,
-                     f"Posterior medians and 68\\% intervals, DESI DR2 BAO + {sn_txt} (+ Planck distance priors). "
-                     r"In the no-Planck fits $H_0$ and $r_d$ are degenerate and only $H_0 r_d$ is constrained.",
+                     f"Posterior medians and 68\\% intervals of the fitted parameters, DESI DR2 BAO + {sn_txt} (+ Planck distance priors). "
+                     r"Without Planck, $H_0$, $r_d$ and $\Omega_{m0}$ are not constrained (only $H_0 r_d$, $q_0$ and $j_0$ are; "
+                     r"$\Omega_{m0}$ does not enter $H(z)/H_0$), so they are not listed.",
                      f"tab:params_{sn}", blocks=blocks))
 
-    # 3 -- negative dark density
+    # 3 -- derived quantities and negative dark density
     rows, blocks = [], {}
     for m, d in data.items():
         blocks[len(rows)] = MODEL_NAME.get(m, m)
         for i, r in d.iterrows():
-            fx = pm(r["fX_star"], nd=3) if "fX_star" in d.columns else "--"
-            rows.append([label(i), prob(r["P(rho_DE<0 inside data)"]), prob(r["P(rho_DE<0 only beyond)"]), fx])
-    out.append(table(["Variant", r"$P(\tilde\rho_{\rm DE}<0,\;z\le2.5)$", r"$P(\tilde\rho_{\rm DE}<0,\;z>2.5\text{ only})$",
-                      r"$f_X(z_*)$"], rows,
-                     f"Posterior probability of a negative effective dark density inside the data range and only beyond it, "
-                     f"and the dark fraction at recombination ({sn_txt}).",
-                     f"tab:negdark_{sn}", blocks=blocks))
+            noplanck = not np.isfinite(r["chi2_Planck"])
+            g = lambda c, nd=None: pm(r[c], nd) if c in d.columns else "--"
+            rows.append([label(i), g("eps"), "--" if noplanck else g("wDE0"), "--" if noplanck else g("wDE0p"),
+                         "--" if noplanck else g("fX_star", 3),
+                         "--" if noplanck else prob(r["P(rho_DE<0 inside data)"]),
+                         "--" if noplanck else prob(r["P(rho_DE<0 only beyond)"])])
+    out.append(table(["Variant", r"$\epsilon$", r"$w_{\rm DE}(0)$", r"$w_{\rm DE}'(0)$", r"$f_X(z_*)$",
+                      r"$P(\tilde\rho_{\rm DE}<0,\;z\le2.5)$", r"$P(\tilde\rho_{\rm DE}<0,\;z>2.5\text{ only})$"], rows,
+                     f"Derived quantities ({sn_txt}): the closure constant $\\epsilon$ ($\\epsilon=0$ is $\\Lambda$CDM), the present-day dark-energy "
+                     r"equation of state $w_{\rm DE}(0)$ and its slope $w'_{\rm DE}=\mathrm{d}w_{\rm DE}/\mathrm{d}\ln a$ at $z=0$, the dark fraction "
+                     r"at recombination, and the posterior probability of a negative effective dark density inside the data range and only beyond it. "
+                     r"$w_{\rm DE}$ and the density probabilities need $\Omega_{m0}$ and are therefore not available without Planck.",
+                     f"tab:derived_{sn}", blocks=blocks))
     return "\n".join(out)
 
 

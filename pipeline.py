@@ -20,6 +20,7 @@ Options:  --only zm3 base   (variants; `benchmarks` for cpl/lcdm)   --force   --
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
 import subprocess
@@ -46,10 +47,19 @@ def load_status():
         return {}
 
 
-def set_done(key):
+def yaml_hash(path):
+    """Fingerprint of a yaml file (priors, likelihood options ...): a run is only valid for the yaml it was made with."""
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha1(f.read()).hexdigest()[:12]
+    except OSError:
+        return None
+
+
+def set_done(key, yaml_file=None):
     with _lock:
         st = load_status()
-        st[key] = {"done": True, "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+        st[key] = {"done": True, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "yaml_hash": yaml_hash(yaml_file) if yaml_file else None}
         os.makedirs("chains", exist_ok=True)
         with open(STATUS, "w") as f:
             json.dump(st, f, indent=1)
@@ -59,16 +69,22 @@ def chain_files(prefix):
     return glob.glob(f"chains/{prefix}.[0-9]*.txt")
 
 
+def _state(key, st, yaml_file, files_exist):
+    """done | stale | found | missing.   stale = recorded as finished, but with a different yaml (or before yaml fingerprints existed):
+    e.g. after the priors were changed.  found = output exists but this script never recorded the run (see `adopt`)."""
+    rec = st.get(key)
+    if rec and rec.get("done"):
+        h = yaml_hash(yaml_file)
+        return "done" if h is not None and rec.get("yaml_hash") == h else "stale"
+    return "found" if files_exist else "missing"
+
+
 def mcmc_state(prefix, st):
-    if st.get(prefix, {}).get("done"):
-        return "done"
-    return "found" if chain_files(prefix) else "missing"
+    return _state(prefix, st, os.path.join(RUNS_DIR, f"{prefix}.yaml"), bool(chain_files(prefix)))
 
 
 def min_state(prefix, st):
-    if os.path.exists(f"chains/{prefix}_min.minimum.txt") or st.get(prefix + "_min", {}).get("done"):
-        return "done"
-    return "missing"
+    return _state(prefix + "_min", st, os.path.join(RUNS_DIR, f"{prefix}_min.yaml"), os.path.exists(f"chains/{prefix}_min.minimum.txt"))
 
 
 def yaml_state(prefix):
@@ -102,7 +118,8 @@ def cmd_status(cfg, only):
     print(f"{'run':{w}s}  yaml  MCMC     minimiser")
     for r in rs:
         print(f"{r['prefix']:{w}s}  {yaml_state(r['prefix']):4s}  {mcmc_state(r['prefix'], st):8s} {min_state(r['prefix'], st)}")
-    print("\nMCMC 'found' = chain files exist but this script did not run them: `adopt` marks them finished.")
+    print("\nfound = output exists but this script did not run it: `adopt` marks it finished (only if the yaml is the one it was made with).")
+    print("stale = finished with an older yaml (e.g. before a prior change): `run` repeats it.")
 
 
 def cmd_make(cfg, only, dry):
@@ -124,7 +141,7 @@ def _cobaya(task, dry):
     t0 = time.time()
     rc = sh(["cobaya-run", "-f", yaml_file], dry, log=f"{LOG_DIR}/{key}.log")
     if rc == 0 and not dry:
-        set_done(key)
+        set_done(key, yaml_file)
     print(f"  [{kind}] {prefix}: {'finished' if rc == 0 else f'FAILED (exit {rc}, see {LOG_DIR}/{key}.log)'}"
           + ("" if dry else f" in {(time.time() - t0) / 60:.1f} min"), flush=True)
     return rc
@@ -142,8 +159,10 @@ def cmd_run(cfg, only, dry, force, jobs):
             elif state == "done" and not force:
                 continue
             elif state == "found" and not force:
-                print(f"  skip {p}: chain files exist but are not marked finished (`adopt` them, or --force to re-run)")
+                print(f"  skip {p}{suffix}: output exists but is not marked finished (`adopt` it, or --force to re-run)")
             else:
+                if state == "stale":
+                    print(f"  {p}{suffix}: stale (made with an older yaml), will be re-run")
                 tasks.append((kind, p, yf))
     if not tasks:
         print("[run] nothing to do")
@@ -155,14 +174,17 @@ def cmd_run(cfg, only, dry, force, jobs):
 
 
 def cmd_adopt(cfg, only):
+    """Mark existing output as finished, FOR THE YAML AS IT IS NOW.  Only use this if the yaml files were not changed after the runs."""
     st = load_status()
     n = 0
     for r in vc.runs(cfg, only):
-        if mcmc_state(r["prefix"], st) == "found":
-            set_done(r["prefix"])
-            n += 1
-            print("  adopted", r["prefix"])
-    print(f"[adopt] {n} chains marked as finished")
+        p = r["prefix"]
+        for suffix, state in (("", mcmc_state(p, st)), ("_min", min_state(p, st))):
+            if state in ("found", "stale"):
+                set_done(p + suffix, os.path.join(RUNS_DIR, f"{p}{suffix}.yaml"))
+                n += 1
+                print(f"  adopted {p}{suffix}" + (" (was stale)" if state == "stale" else ""))
+    print(f"[adopt] {n} runs marked as finished")
 
 
 def cmd_analyse(cfg, only, dry):
@@ -170,9 +192,12 @@ def cmd_analyse(cfg, only, dry):
     env = {"MPLBACKEND": "Agg"}
     for r in vc.runs(cfg, only):
         p = r["prefix"]
-        if mcmc_state(p, st) == "missing":
+        state = mcmc_state(p, st)
+        if state == "missing":
             print(f"  skip {p}: no chains")
             continue
+        if state == "stale":
+            print(f"  WARNING {p}: chains were made with an older yaml (stale); re-run before using the results")
         print(f"[analyse] {p}")
         sh([PY, "analyse_chains.py", p], dry, log=f"{LOG_DIR}/analyse_{p}.log", env=env)
         sh([PY, "plot_chains.py", p], dry, log=f"{LOG_DIR}/plot_{p}.log", env=env)
@@ -195,6 +220,8 @@ def cmd_compare(cfg, only, dry):
     for sn in cfg["sn"]:
         print(f"[compare] compare_w.py {sn} (edit its RUNS list for new tags)")
         sh([PY, "compare_w.py", sn], dry, env=env)
+    print("[compare] compare_plots.py (variants = plot_variants of the manifest)")
+    sh([PY, "compare_plots.py"], dry, env=env)
     return True
 
 

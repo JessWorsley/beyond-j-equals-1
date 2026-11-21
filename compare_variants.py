@@ -22,7 +22,8 @@ import numpy as np
 import pandas as pd
 
 import closure_cosmo as cs
-from chain_utils import read_chains, run_prefix, infer_model
+from derived import derived_samples
+from chain_utils import is_fixed_noplanck, read_chains, run_prefix, infer_model
 from model_comparison import best_chi2
 import positivity_check as pc
 
@@ -48,6 +49,13 @@ try:
         print("variants from pipeline.yaml:", [v[0] for v in VARIANTS])
 except Exception as _e:                                          # noqa: manifest missing or unreadable -> the list above
     print("note: not using pipeline.yaml:", repr(_e))
+
+
+def fmt_pm(lo, med, hi):
+    """median (+up -down) with three significant digits of the smaller error (small quantities such as omega_b need more decimals)."""
+    errs = [e for e in (hi - med, med - lo) if e > 0]
+    dec = max(3, 2 - int(np.floor(np.log10(min(errs))))) if errs else 3
+    return f"{med:.{dec}f} (+{hi - med:.{dec}f} -{med - lo:.{dec}f})"
 
 
 def short(col):
@@ -89,6 +97,8 @@ def one(name, prefix, z_match=None):
     sampled = [p for p in ("H0", "Om0", "ombh2", "q0", "j0", "w0", "wa") if p in df.columns]
     if "ombh2" not in df.columns and "rd" in df.columns:
         sampled.append("rd")
+        if is_fixed_noplanck(df):                                # H0, Om0 fixed in the no-Planck run: not free parameters
+            sampled = [p for p in sampled if p not in ("H0", "Om0")]
     row = dict(variant=name + ("*" if from_chain is True else "+" if from_chain == "chain" else ""), prefix=prefix, k=len(sampled) + 1, chi2=chi["chi2"],
                chi2_DESI=parts.get("DESI", np.nan), chi2_SN=parts.get(SN.capitalize() if SN != "desy5" else "DESY5", np.nan),
                chi2_Planck=parts.get("Planck", np.nan))
@@ -102,12 +112,17 @@ def one(name, prefix, z_match=None):
         if p in df.columns:
             lo, med, hi = wq(df[p].values, w)
             row[p] = f"{med:.3f} (+{hi - med:.3f} -{med - lo:.3f})"
+    if "ombh2" in df.columns:
+        row["ombh2"] = fmt_pm(*wq(df["ombh2"].values, w))
     if "fX_star" in df.columns:
         lo, med, hi = wq(df["fX_star"].values, w)
         row["fX_star"] = f"{med:+.3f} (+{hi - med:.3f} -{med - lo:.3f})"
     # positivity of the dark density, from the posterior itself (post-processing, closure models only)
     model = infer_model(prefix, df.columns, fallback=MODEL)
     if model != "cpl":
+        # epsilon (needs only q0, j0); w_DE(0) and w'_DE(0) need a constrained Om0, i.e. a Planck-included run
+        for key, vals in derived_samples(df, model, with_om0="ombh2" in df.columns).items():
+            row[key] = fmt_pm(*wq(vals, w))
         rng = np.random.default_rng(0)
         idx = rng.choice(len(df), size=min(3000, len(df)), p=w / w.sum())
         sub = df.iloc[idx].reset_index(drop=True)
@@ -226,9 +241,12 @@ def main():
         print("\nNote: the no-Planck run has no Planck data; its total chi^2, AIC and BIC are not comparable with the others.\n"
               "      Compare DESI+SN above, and the parameters below.")
 
-    cols = [x for x in ("H0", "rd", "Om0", "q0", "j0", "fX_star") if x in tab.columns]
+    cols = [x for x in ("H0", "rd", "Om0", "ombh2", "q0", "j0", "eps", "wDE0", "wDE0p", "fX_star") if x in tab.columns]
     print("\nPOSTERIOR MEDIANS (68%)")
     print(tab[cols].to_string())
+    if tab["chi2_Planck"].isna().any():
+        print("  Without Planck only q0, j0 (hence eps) and the product H0*r_d are constrained: H0, r_d and Om0 simply return their priors\n"
+              "  (Om0 does not enter H(z)/H0; H0 and r_d only through H0*r_d), so do not interpret them, or rho_DE, w_DE there.")
     cols = [x for x in ("P(rho_DE<0 inside data)", "P(rho_DE<0 only beyond)", "bound margin (median)") if x in tab.columns]
     if cols:
         print(f"\nNEGATIVE DARK DENSITY (data range = z <= {Z_DATA_MAX}; bound margin = j0 - bound, model 3 only)")

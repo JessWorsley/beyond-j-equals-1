@@ -8,6 +8,7 @@ sn: [pantheon, desy5]                 # datasets: pantheon, desy5 (never combine
 models: [model_1, model_2, model_3]              # closure models: model_1, model_2, model_3
 benchmarks: [cpl, lcdm]        # run once per SN dataset with the default settings; remove the line to skip
 best_of: 8                     # random starting points of every minimiser run
+plot_variants: [base, posdark, zm3pos]   # variants drawn by compare_plots.py (models share the axes)
 model_comparison_tags: ["", "_zm3pos"]   # model_comparison.py is run once per tag: closure models vs LCDM-limit and CPL ("" = base chains)
 
 variants:
@@ -32,7 +33,7 @@ variants:
     tag: _zm3pos
     z_match: 3.0
     z_match_negative: false
-# --- Z_MATCH robustness (positive frozen density, like zm3pos).  DESI Lya reaches z = 2.33, so 2.5 is the lowest sensible value.
+  # --- Z_MATCH robustness (positive frozen density, like zm3pos).  DESI Lya reaches z = 2.33, so 2.5 is the lowest sensible value.
   - name: zm25pos
     label: z match at 2.5 (positive)
     tag: _zm25pos
@@ -48,7 +49,7 @@ variants:
     tag: _zm5pos
     z_match: 5.0
     z_match_negative: false
-# --- extra points for the Delta chi^2(Z_MATCH) profile (interpolates between zm3pos and posdark)
+  # --- extra points for the Delta chi^2(Z_MATCH) profile (interpolates between zm3pos and posdark)
   - name: zm35pos
     label: z match at 3.5 (positive)
     tag: _zm35pos
