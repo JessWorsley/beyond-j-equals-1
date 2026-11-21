@@ -79,11 +79,6 @@ Run with `cobaya-run -f runs/<name>.yaml` (`-f` deletes existing output with tha
 | `check_paper_equations.py` | appendix equations of the paper vs the code |
 | `mcmc_compare_mock.py` | mock-data check that sampling q0 or dq gives the same posterior |
 
-### Obsolete (safe to delete)
-`cosmology.py`, `likelihoods_cmb.py`, `test_cosmology.py`, `data_planck_template.py`, and the old hand-written yaml files
-(`likelihood.yaml`, `likelihood_desy5.yaml`, `cpl.yaml`, `cpl_desy5.yaml`, `lcdm_limit.yaml`, `minimize.yaml`) once
-`check_point.py` is pointed at a file in `runs/`.  (`cosmology.py` shadows nothing now, but an old copy once shadowed `closure_cosmo`.)
-
 ## Recipes
 
 ### Automated (recommended)
